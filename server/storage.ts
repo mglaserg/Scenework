@@ -226,7 +226,7 @@ async function createDatabaseStorage(): Promise<IStorage> {
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const schema = await import("@shared/schema");
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: false } });
   const db = drizzle(pool, { schema });
 
   return {
