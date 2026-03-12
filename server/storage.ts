@@ -226,7 +226,8 @@ async function createDatabaseStorage(): Promise<IStorage> {
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const schema = await import("@shared/schema");
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: false } });
+  const connStr = process.env.DATABASE_URL!.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '');
+  const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false } });
   const db = drizzle(pool, { schema });
 
   return {
@@ -281,7 +282,7 @@ let _storage: IStorage | null = null;
 export async function getStorage(): Promise<IStorage> {
   if (_storage) return _storage;
   if (process.env.DATABASE_URL) {
-    console.log("[storage] Using PostgreSQL (Neon)");
+    console.log("[storage] Using PostgreSQL");
     _storage = await createDatabaseStorage();
   } else {
     console.log("[storage] Using in-memory storage (set DATABASE_URL to enable Postgres)");
