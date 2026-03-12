@@ -229,7 +229,8 @@ async function createDatabaseStorage(): Promise<IStorage> {
   const { readFileSync } = await import("fs");
   const { resolve } = await import("path");
   const ca = readFileSync(resolve(process.cwd(), "ca-certificate.crt")).toString();
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: true, ca } });
+  const connStr = process.env.DATABASE_URL!.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '').replace(/\?$/, '');
+  const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: true, ca } });
   const db = drizzle(pool, { schema });
 
   return {

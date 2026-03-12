@@ -9,5 +9,6 @@ if (!process.env.DATABASE_URL) {
 }
 
 const ca = readFileSync(resolve(process.cwd(), "ca-certificate.crt")).toString();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true, ca } });
+const connStr = process.env.DATABASE_URL!.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '').replace(/\?$/, '');
+const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: true, ca } });
 export const db = drizzle(pool, { schema });
