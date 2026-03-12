@@ -227,7 +227,7 @@ async function createDatabaseStorage(): Promise<IStorage> {
   const schema = await import("@shared/schema");
 
   const connStr = process.env.DATABASE_URL!.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '');
-  const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false } });
+  const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false, require: true } });
   const db = drizzle(pool, { schema });
 
   return {

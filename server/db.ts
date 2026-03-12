@@ -7,5 +7,5 @@ if (!process.env.DATABASE_URL) {
 }
 
 const connStr = process.env.DATABASE_URL!.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '');
-const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false } });
+const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false, require: true } });
 export const db = drizzle(pool, { schema });
