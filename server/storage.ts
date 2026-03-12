@@ -222,12 +222,12 @@ class MemStorage implements IStorage {
 // ── PostgreSQL Storage ─────────────────────────────────────────────────────────
 async function createDatabaseStorage(): Promise<IStorage> {
   const { eq, desc, asc } = await import("drizzle-orm");
-  const { neon } = await import("@neondatabase/serverless");
-  const { drizzle } = await import("drizzle-orm/neon-http");
+  const { Pool } = await import("pg");
+  const { drizzle } = await import("drizzle-orm/node-postgres");
   const schema = await import("@shared/schema");
 
-  const sql = neon(process.env.DATABASE_URL!);
-  const db = drizzle(sql, { schema });
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+  const db = drizzle(pool, { schema });
 
   return {
     async getFocusItems() { return db.select().from(schema.focusItems).orderBy(asc(schema.focusItems.id)); },
