@@ -4,11 +4,14 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL, ensure the database is provisioned");
 }
 
+const url = process.env.DATABASE_URL.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '');
+
 export default defineConfig({
   out: "./migrations",
   schema: "./shared/schema.ts",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url,
+    ssl: { rejectUnauthorized: false },
   },
 });
