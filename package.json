@@ -8,8 +8,8 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "db:push": "NODE_TLS_REJECT_UNAUTHORIZED=0 drizzle-kit push",
-    "db:seed": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx server/seed.ts"
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx server/seed.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
