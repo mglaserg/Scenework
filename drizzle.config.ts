@@ -12,6 +12,6 @@ export default defineConfig({
   dialect: "postgresql",
   dbCredentials: {
     url,
-    ssl: { rejectUnauthorized: false },
+    ssl: { rejectUnauthorized: false, require: true },
   },
 });
