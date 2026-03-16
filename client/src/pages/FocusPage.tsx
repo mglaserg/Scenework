@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, Shuffle, BookOpen, X, Check } from "lucide-react";
+import { Plus, Edit2, Trash2, Shuffle, BookOpen, X, Check, MousePointerClick } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,25 +32,46 @@ function FocusCard({
   onEdit,
   onDelete,
   highlighted,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   item: FocusItem;
   onEdit: (item: FocusItem) => void;
   onDelete: (id: number) => void;
   highlighted?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (item: FocusItem) => void;
 }) {
+  const isActive = highlighted || selected;
   return (
     <div
       data-testid={`focus-card-${item.id}`}
+      onClick={selectable ? () => onToggleSelect?.(item) : undefined}
       style={{
-        background: highlighted ? "hsl(38 85% 52% / 0.08)" : "hsl(30 8% 10%)",
-        border: highlighted ? "1px solid hsl(38 85% 52% / 0.4)" : "1px solid hsl(30 8% 18%)",
+        background: selected ? "hsl(38 85% 52% / 0.12)" : highlighted ? "hsl(38 85% 52% / 0.08)" : "hsl(30 8% 10%)",
+        border: selected ? "1px solid hsl(38 85% 52% / 0.7)" : highlighted ? "1px solid hsl(38 85% 52% / 0.4)" : "1px solid hsl(30 8% 18%)",
         borderRadius: 10,
         padding: "16px 18px",
-        transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-        boxShadow: highlighted ? "0 0 16px hsl(38 85% 52% / 0.12)" : "none",
+        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+        boxShadow: selected ? "0 0 20px hsl(38 85% 52% / 0.18)" : highlighted ? "0 0 16px hsl(38 85% 52% / 0.12)" : "none",
+        cursor: selectable ? "pointer" : "default",
+        userSelect: "none",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        {selectable && (
+          <div style={{
+            width: 18, height: 18, borderRadius: 5, border: selected ? "2px solid hsl(38 85% 52%)" : "2px solid hsl(30 8% 30%)",
+            background: selected ? "hsl(38 85% 52%)" : "transparent",
+            flexShrink: 0, marginTop: 2,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "all 150ms",
+          }}>
+            {selected && <Check size={11} style={{ color: "hsl(30 8% 7%)" }} />}
+          </div>
+        )}
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <span
@@ -58,7 +79,7 @@ function FocusCard({
                 fontFamily: "'Zodiak', serif",
                 fontWeight: 600,
                 fontSize: "0.95rem",
-                color: highlighted ? "hsl(38 85% 65%)" : "hsl(38 20% 88%)",
+                color: isActive ? "hsl(38 85% 65%)" : "hsl(38 20% 88%)",
               }}
             >
               {item.title}
@@ -71,42 +92,28 @@ function FocusCard({
             </p>
           )}
         </div>
-        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <button
-            data-testid={`edit-focus-${item.id}`}
-            onClick={() => onEdit(item)}
-            style={{
-              padding: "5px 6px",
-              borderRadius: 6,
-              color: "hsl(38 8% 50%)",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              transition: "color 150ms, background 150ms",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "hsl(38 20% 80%)"; (e.currentTarget as HTMLElement).style.background = "hsl(30 8% 16%)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "hsl(38 8% 50%)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-          >
-            <Edit2 size={14} />
-          </button>
-          <button
-            data-testid={`delete-focus-${item.id}`}
-            onClick={() => onDelete(item.id)}
-            style={{
-              padding: "5px 6px",
-              borderRadius: 6,
-              color: "hsl(38 8% 50%)",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              transition: "color 150ms, background 150ms",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "hsl(0 60% 55%)"; (e.currentTarget as HTMLElement).style.background = "hsl(0 40% 15%)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "hsl(38 8% 50%)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
+        {!selectable && (
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            <button
+              data-testid={`edit-focus-${item.id}`}
+              onClick={e => { e.stopPropagation(); onEdit(item); }}
+              style={{ padding: "5px 6px", borderRadius: 6, color: "hsl(38 8% 50%)", background: "transparent", border: "none", cursor: "pointer", transition: "color 150ms, background 150ms" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "hsl(38 20% 80%)"; (e.currentTarget as HTMLElement).style.background = "hsl(30 8% 16%)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "hsl(38 8% 50%)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <Edit2 size={14} />
+            </button>
+            <button
+              data-testid={`delete-focus-${item.id}`}
+              onClick={e => { e.stopPropagation(); onDelete(item.id); }}
+              style={{ padding: "5px 6px", borderRadius: 6, color: "hsl(38 8% 50%)", background: "transparent", border: "none", cursor: "pointer", transition: "color 150ms, background 150ms" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "hsl(0 60% 55%)"; (e.currentTarget as HTMLElement).style.background = "hsl(0 40% 15%)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "hsl(38 8% 50%)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -123,6 +130,8 @@ export default function FocusPage() {
   const [drawnItems, setDrawnItems] = useState<FocusItem[]>([]);
   const [sessionNotes, setSessionNotes] = useState("");
   const [filterCat, setFilterCat] = useState<string>("all");
+  const [drawMode, setDrawMode] = useState<"random" | "pick">("random");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const { data: items = [], isLoading } = useQuery<FocusItem[]>({ queryKey: ["/api/focus-items"] });
   const { data: sessions = [] } = useQuery<PracticeSession[]>({ queryKey: ["/api/practice-sessions"] });
@@ -156,6 +165,22 @@ export default function FocusPage() {
     const pool = [...items];
     pool.sort(() => Math.random() - 0.5);
     setDrawnItems(pool.slice(0, Math.min(3, pool.length)));
+  }
+
+  function toggleSelect(item: FocusItem) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
+  }
+
+  function confirmPick() {
+    const picked = items.filter(i => selectedIds.has(i.id));
+    setDrawnItems(picked);
+    setDrawMode("random");
+    setSelectedIds(new Set());
   }
 
   function logSession() {
@@ -212,24 +237,69 @@ export default function FocusPage() {
           marginBottom: 28,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: drawnItems.length ? 18 : 0, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: drawnItems.length || drawMode === "pick" ? 18 : 0, flexWrap: "wrap", gap: 10 }}>
           <div>
             <h2 style={{ fontFamily: "'Zodiak', serif", fontWeight: 600, fontSize: "1.05rem", color: "hsl(38 85% 60%)", marginBottom: 2 }}>
-              Tonight's Draw
+              Tonight's Focus
             </h2>
-            <p style={{ fontSize: "0.78rem", color: "hsl(38 8% 50%)" }}>Pick 3 skills to intentionally focus on</p>
+            <p style={{ fontSize: "0.78rem", color: "hsl(38 8% 50%)" }}>Choose randomly or pick your own</p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Button
-              data-testid="draw-button"
-              onClick={draw}
-              disabled={items.length === 0}
-              size="sm"
-              style={{ background: "hsl(38 85% 52%)", color: "hsl(30 8% 7%)", fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}
-            >
-              <Shuffle size={14} />
-              {drawnItems.length ? "Redraw" : "Draw 3"}
-            </Button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Mode toggle */}
+            <div style={{ display: "flex", background: "hsl(30 8% 14%)", border: "1px solid hsl(30 8% 22%)", borderRadius: 8, padding: 3, gap: 2 }}>
+              <button
+                data-testid="mode-random"
+                onClick={() => { setDrawMode("random"); setSelectedIds(new Set()); }}
+                style={{
+                  padding: "4px 10px", borderRadius: 6, fontSize: "0.75rem", fontWeight: 600,
+                  border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+                  background: drawMode === "random" ? "hsl(38 85% 52%)" : "transparent",
+                  color: drawMode === "random" ? "hsl(30 8% 7%)" : "hsl(38 8% 55%)",
+                  transition: "all 150ms",
+                }}
+              >
+                <Shuffle size={12} /> Random
+              </button>
+              <button
+                data-testid="mode-pick"
+                onClick={() => { setDrawMode("pick"); setDrawnItems([]); }}
+                style={{
+                  padding: "4px 10px", borderRadius: 6, fontSize: "0.75rem", fontWeight: 600,
+                  border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+                  background: drawMode === "pick" ? "hsl(38 85% 52%)" : "transparent",
+                  color: drawMode === "pick" ? "hsl(30 8% 7%)" : "hsl(38 8% 55%)",
+                  transition: "all 150ms",
+                }}
+              >
+                <MousePointerClick size={12} /> Pick Own
+              </button>
+            </div>
+
+            {drawMode === "random" && (
+              <Button
+                data-testid="draw-button"
+                onClick={draw}
+                disabled={items.length === 0}
+                size="sm"
+                style={{ background: "hsl(38 85% 52%)", color: "hsl(30 8% 7%)", fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}
+              >
+                <Shuffle size={14} />
+                {drawnItems.length ? "Redraw" : "Draw 3"}
+              </Button>
+            )}
+
+            {drawMode === "pick" && selectedIds.size > 0 && (
+              <Button
+                data-testid="confirm-pick-button"
+                onClick={confirmPick}
+                size="sm"
+                style={{ background: "hsl(38 85% 52%)", color: "hsl(30 8% 7%)", fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}
+              >
+                <Check size={14} />
+                Set Focus ({selectedIds.size})
+              </Button>
+            )}
+
             {drawnItems.length > 0 && (
               <Button
                 data-testid="log-session-button"
@@ -244,6 +314,13 @@ export default function FocusPage() {
             )}
           </div>
         </div>
+
+        {/* Pick mode instruction */}
+        {drawMode === "pick" && drawnItems.length === 0 && selectedIds.size === 0 && (
+          <div style={{ fontSize: "0.8rem", color: "hsl(38 8% 45%)", marginBottom: 8, fontStyle: "italic" }}>
+            Click any items in your library below to select them as tonight's focus.
+          </div>
+        )}
 
         {drawnItems.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginBottom: sessionNotes !== undefined ? 14 : 0 }}>
@@ -408,7 +485,10 @@ export default function FocusPage() {
               item={item}
               onEdit={startEdit}
               onDelete={id => deleteMutation.mutate(id)}
-              highlighted={drawnIds.has(item.id)}
+              highlighted={drawMode === "random" && drawnIds.has(item.id)}
+              selectable={drawMode === "pick"}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={toggleSelect}
             />
           ))}
         </div>
