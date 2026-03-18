@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
-import { encryptFields, decryptArray, decryptFields } from "@/lib/crypto";
+import { encryptFields, decryptArray } from "@/lib/crypto";
 import { Plus, Edit2, Trash2, Shuffle, BookOpen, X, Check, MousePointerClick } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -141,14 +141,25 @@ export default function FocusPage() {
   const [drawMode, setDrawMode] = useState<"random" | "pick">("random");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const { data: items = [], isLoading } = useQuery<FocusItem[], Error, FocusItem[]>({
+  const { data: rawItems = [], isLoading } = useQuery<FocusItem[]>({
     queryKey: ["/api/focus-items"],
-    select: ((raw: FocusItem[]) => dataKey ? decryptArray(raw, FOCUS_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: FocusItem[]) => FocusItem[],
   });
-  const { data: sessions = [] } = useQuery<PracticeSession[], Error, PracticeSession[]>({
+  const [items, setItems] = useState<FocusItem[]>([]);
+  useEffect(() => {
+    if (!rawItems.length) { setItems([]); return; }
+    if (!dataKey) { setItems(rawItems); return; }
+    decryptArray(rawItems, FOCUS_ENCRYPTED_FIELDS, dataKey).then(setItems);
+  }, [rawItems, dataKey]);
+
+  const { data: rawSessions = [] } = useQuery<PracticeSession[]>({
     queryKey: ["/api/practice-sessions"],
-    select: ((raw: PracticeSession[]) => dataKey ? decryptArray(raw, SESSION_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: PracticeSession[]) => PracticeSession[],
   });
+  const [sessions, setSessions] = useState<PracticeSession[]>([]);
+  useEffect(() => {
+    if (!rawSessions.length) { setSessions([]); return; }
+    if (!dataKey) { setSessions(rawSessions); return; }
+    decryptArray(rawSessions, SESSION_ENCRYPTED_FIELDS, dataKey).then(setSessions);
+  }, [rawSessions, dataKey]);
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {

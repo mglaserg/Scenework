@@ -19,10 +19,15 @@ export default function YesAndPage() {
   const [justSaved, setJustSaved] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: history = [], isLoading: historyLoading } = useQuery<YesAndResponse[], Error, YesAndResponse[]>({
+  const { data: rawResponses = [], isLoading: historyLoading } = useQuery<YesAndResponse[]>({
     queryKey: ["/api/yes-and/responses"],
-    select: ((raw: YesAndResponse[]) => dataKey ? decryptArray(raw, YESAND_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: YesAndResponse[]) => YesAndResponse[],
   });
+  const [history, setHistory] = useState<YesAndResponse[]>([]);
+  useEffect(() => {
+    if (!rawResponses.length) { setHistory([]); return; }
+    if (!dataKey) { setHistory(rawResponses); return; }
+    decryptArray(rawResponses, YESAND_ENCRYPTED_FIELDS, dataKey).then(setHistory);
+  }, [rawResponses, dataKey]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

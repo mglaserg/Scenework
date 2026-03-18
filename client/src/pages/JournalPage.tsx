@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -182,10 +182,15 @@ export default function JournalPage() {
   const [form, setForm] = useState<FormState>(BLANK);
   const [filterType, setFilterType] = useState("all");
 
-  const { data: entries = [], isLoading } = useQuery<JournalEntry[], Error, JournalEntry[]>({
+  const { data: rawEntries = [], isLoading } = useQuery<JournalEntry[]>({
     queryKey: ["/api/journal-entries"],
-    select: ((raw: JournalEntry[]) => dataKey ? decryptArray(raw, JOURNAL_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: JournalEntry[]) => JournalEntry[],
   });
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  useEffect(() => {
+    if (!rawEntries.length) { setEntries([]); return; }
+    if (!dataKey) { setEntries(rawEntries); return; }
+    decryptArray(rawEntries, JOURNAL_ENCRYPTED_FIELDS, dataKey).then(setEntries);
+  }, [rawEntries, dataKey]);
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {
@@ -194,6 +199,7 @@ export default function JournalPage() {
       return apiRequest("POST", "/api/journal-entries", encrypted);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] }); setShowForm(false); setForm(BLANK); toast({ title: "Entry saved" }); },
+    onError: (e: Error) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
@@ -203,6 +209,7 @@ export default function JournalPage() {
       return apiRequest("PATCH", `/api/journal-entries/${id}`, encrypted);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] }); setEditingEntry(null); setShowForm(false); setForm(BLANK); toast({ title: "Entry updated" }); },
+    onError: (e: Error) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({

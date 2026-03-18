@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { WarmupExercise } from "@shared/schema";
@@ -46,10 +46,15 @@ export default function WarmUpPage() {
   const [editState, setEditState] = useState<EditState>(null);
   const [tab, setTab] = useState<"draw" | "library">("draw");
 
-  const { data: exercises = [], isLoading } = useQuery<WarmupExercise[], Error, WarmupExercise[]>({
+  const { data: rawExercises = [], isLoading } = useQuery<WarmupExercise[]>({
     queryKey: ["/api/warmup-exercises"],
-    select: ((raw: WarmupExercise[]) => dataKey ? decryptArray(raw, WARMUP_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: WarmupExercise[]) => WarmupExercise[],
   });
+  const [exercises, setExercises] = useState<WarmupExercise[]>([]);
+  useEffect(() => {
+    if (!rawExercises.length) { setExercises([]); return; }
+    if (!dataKey) { setExercises(rawExercises); return; }
+    decryptArray(rawExercises, WARMUP_ENCRYPTED_FIELDS, dataKey).then(setExercises);
+  }, [rawExercises, dataKey]);
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SavedCharacter } from "@shared/schema";
@@ -41,10 +41,15 @@ export default function CharacterPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
-  const { data: library = [], isLoading: libLoading } = useQuery<SavedCharacter[], Error, SavedCharacter[]>({
+  const { data: rawCharacters = [], isLoading: libLoading } = useQuery<SavedCharacter[]>({
     queryKey: ["/api/saved-characters"],
-    select: ((raw: SavedCharacter[]) => dataKey ? decryptArray(raw, CHAR_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: SavedCharacter[]) => SavedCharacter[],
   });
+  const [library, setLibrary] = useState<SavedCharacter[]>([]);
+  useEffect(() => {
+    if (!rawCharacters.length) { setLibrary([]); return; }
+    if (!dataKey) { setLibrary(rawCharacters); return; }
+    decryptArray(rawCharacters, CHAR_ENCRYPTED_FIELDS, dataKey).then(setLibrary);
+  }, [rawCharacters, dataKey]);
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {

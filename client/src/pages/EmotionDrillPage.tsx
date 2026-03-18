@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -58,10 +58,15 @@ export default function EmotionDrillPage() {
   const [editingPrompt, setEditingPrompt] = useState<DialogPrompt | null>(null);
   const [form, setForm] = useState<FormState>(BLANK);
 
-  const { data: prompts = [] } = useQuery<DialogPrompt[], Error, DialogPrompt[]>({
+  const { data: rawPrompts = [] } = useQuery<DialogPrompt[]>({
     queryKey: ["/api/dialog-prompts"],
-    select: ((raw: DialogPrompt[]) => dataKey ? decryptArray(raw, DIALOG_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: DialogPrompt[]) => DialogPrompt[],
   });
+  const [prompts, setPrompts] = useState<DialogPrompt[]>([]);
+  useEffect(() => {
+    if (!rawPrompts.length) { setPrompts([]); return; }
+    if (!dataKey) { setPrompts(rawPrompts); return; }
+    decryptArray(rawPrompts, DIALOG_ENCRYPTED_FIELDS, dataKey).then(setPrompts);
+  }, [rawPrompts, dataKey]);
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {

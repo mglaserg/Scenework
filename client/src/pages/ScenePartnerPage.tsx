@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { ScenePremise } from "@shared/schema";
@@ -46,10 +46,15 @@ export default function ScenePartnerPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ characterA: "", characterAWant: "", characterB: "", characterBWant: "", location: "", opening: "", notes: "" });
 
-  const { data: saved = [], isLoading: savedLoading } = useQuery<ScenePremise[], Error, ScenePremise[]>({
+  const { data: rawPremises = [], isLoading: savedLoading } = useQuery<ScenePremise[]>({
     queryKey: ["/api/scene-premises"],
-    select: ((raw: ScenePremise[]) => dataKey ? decryptArray(raw, SCENE_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: ScenePremise[]) => ScenePremise[],
   });
+  const [saved, setSaved] = useState<ScenePremise[]>([]);
+  useEffect(() => {
+    if (!rawPremises.length) { setSaved([]); return; }
+    if (!dataKey) { setSaved(rawPremises); return; }
+    decryptArray(rawPremises, SCENE_ENCRYPTED_FIELDS, dataKey).then(setSaved);
+  }, [rawPremises, dataKey]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof form) => {
