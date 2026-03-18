@@ -1,6 +1,13 @@
 /**
  * Storage layer — uses PostgreSQL if DATABASE_URL is set, otherwise in-memory.
- * All methods are scoped to userId for multi-user isolation.
+ *
+ * Shared tables (focus_items, dialog_prompts, warmup_exercises):
+ *   - userId = null  → global shared rows, visible to everyone
+ *   - Methods have no userId param — operate on ALL rows regardless of owner
+ *
+ * User-scoped tables (practice_sessions, journal_entries, yes_and_responses,
+ *                     scene_premises, saved_characters):
+ *   - userId = non-null FK → rows isolated per user
  */
 import {
   type FocusItem, type InsertFocusItem,
@@ -14,20 +21,27 @@ import {
 } from "@shared/schema";
 
 export interface IStorage {
-  getFocusItems(userId: number): Promise<FocusItem[]>;
-  getFocusItem(userId: number, id: number): Promise<FocusItem | undefined>;
-  createFocusItem(userId: number, item: InsertFocusItem): Promise<FocusItem>;
-  updateFocusItem(userId: number, id: number, item: Partial<InsertFocusItem>): Promise<FocusItem | undefined>;
-  deleteFocusItem(userId: number, id: number): Promise<boolean>;
+  // ── Shared (no userId) ────────────────────────────────────────────────────
+  getFocusItems(): Promise<FocusItem[]>;
+  getFocusItem(id: number): Promise<FocusItem | undefined>;
+  createFocusItem(item: InsertFocusItem): Promise<FocusItem>;
+  updateFocusItem(id: number, item: Partial<InsertFocusItem>): Promise<FocusItem | undefined>;
+  deleteFocusItem(id: number): Promise<boolean>;
 
+  getDialogPrompts(): Promise<DialogPrompt[]>;
+  createDialogPrompt(prompt: InsertDialogPrompt): Promise<DialogPrompt>;
+  updateDialogPrompt(id: number, prompt: Partial<InsertDialogPrompt>): Promise<DialogPrompt | undefined>;
+  deleteDialogPrompt(id: number): Promise<boolean>;
+
+  getWarmupExercises(): Promise<WarmupExercise[]>;
+  createWarmupExercise(e: InsertWarmupExercise): Promise<WarmupExercise>;
+  updateWarmupExercise(id: number, e: Partial<InsertWarmupExercise>): Promise<WarmupExercise | undefined>;
+  deleteWarmupExercise(id: number): Promise<boolean>;
+
+  // ── User-scoped ───────────────────────────────────────────────────────────
   getPracticeSessions(userId: number): Promise<PracticeSession[]>;
   createPracticeSession(userId: number, session: InsertPracticeSession): Promise<PracticeSession>;
   deletePracticeSession(userId: number, id: number): Promise<boolean>;
-
-  getDialogPrompts(userId: number): Promise<DialogPrompt[]>;
-  createDialogPrompt(userId: number, prompt: InsertDialogPrompt): Promise<DialogPrompt>;
-  updateDialogPrompt(userId: number, id: number, prompt: Partial<InsertDialogPrompt>): Promise<DialogPrompt | undefined>;
-  deleteDialogPrompt(userId: number, id: number): Promise<boolean>;
 
   getJournalEntries(userId: number): Promise<JournalEntry[]>;
   getJournalEntry(userId: number, id: number): Promise<JournalEntry | undefined>;
@@ -38,11 +52,6 @@ export interface IStorage {
   getYesAndResponses(userId: number): Promise<YesAndResponse[]>;
   createYesAndResponse(userId: number, r: InsertYesAndResponse): Promise<YesAndResponse>;
   deleteYesAndResponse(userId: number, id: number): Promise<boolean>;
-
-  getWarmupExercises(userId: number): Promise<WarmupExercise[]>;
-  createWarmupExercise(userId: number, e: InsertWarmupExercise): Promise<WarmupExercise>;
-  updateWarmupExercise(userId: number, id: number, e: Partial<InsertWarmupExercise>): Promise<WarmupExercise | undefined>;
-  deleteWarmupExercise(userId: number, id: number): Promise<boolean>;
 
   getScenePremises(userId: number): Promise<ScenePremise[]>;
   createScenePremise(userId: number, s: InsertScenePremise): Promise<ScenePremise>;
@@ -67,29 +76,53 @@ class MemStorage implements IStorage {
   private savedCharactersMap: Map<number, SavedCharacter> = new Map();
   private nextId = { focus: 1, session: 1, dialog: 1, journal: 1, yesand: 1, warmup: 1, scene: 1, char: 1 };
 
-  private byUser<T extends { userId: number }>(map: Map<number, T>, userId: number) {
+  private byUser<T extends { userId: number | null }>(map: Map<number, T>, userId: number) {
     return Array.from(map.values()).filter(v => v.userId === userId);
   }
-  private ownedItem<T extends { userId: number }>(map: Map<number, T>, userId: number, id: number) {
+  private ownedItem<T extends { userId: number | null }>(map: Map<number, T>, userId: number, id: number) {
     const item = map.get(id);
     return item?.userId === userId ? item : undefined;
   }
 
-  async getFocusItems(uid: number) { return this.byUser(this.focusItemsMap, uid).sort((a, b) => a.id - b.id); }
-  async getFocusItem(uid: number, id: number) { return this.ownedItem(this.focusItemsMap, uid, id); }
-  async createFocusItem(uid: number, item: InsertFocusItem): Promise<FocusItem> {
+  // ── Shared ────────────────────────────────────────────────────────────────
+  async getFocusItems() { return Array.from(this.focusItemsMap.values()).sort((a, b) => a.id - b.id); }
+  async getFocusItem(id: number) { return this.focusItemsMap.get(id); }
+  async createFocusItem(item: InsertFocusItem): Promise<FocusItem> {
     const id = this.nextId.focus++;
-    const n: FocusItem = { ...item, id, userId: uid, createdAt: new Date() };
+    const n: FocusItem = { ...item, id, userId: null, createdAt: new Date() };
     this.focusItemsMap.set(id, n); return n;
   }
-  async updateFocusItem(uid: number, id: number, item: Partial<InsertFocusItem>) {
-    const e = this.ownedItem(this.focusItemsMap, uid, id); if (!e) return undefined;
+  async updateFocusItem(id: number, item: Partial<InsertFocusItem>) {
+    const e = this.focusItemsMap.get(id); if (!e) return undefined;
     const u = { ...e, ...item }; this.focusItemsMap.set(id, u); return u;
   }
-  async deleteFocusItem(uid: number, id: number) {
-    return this.ownedItem(this.focusItemsMap, uid, id) ? this.focusItemsMap.delete(id) : false;
-  }
+  async deleteFocusItem(id: number) { return this.focusItemsMap.delete(id); }
 
+  async getDialogPrompts() { return Array.from(this.dialogPromptsMap.values()).sort((a, b) => a.id - b.id); }
+  async createDialogPrompt(prompt: InsertDialogPrompt): Promise<DialogPrompt> {
+    const id = this.nextId.dialog++;
+    const n: DialogPrompt = { ...prompt, id, userId: null, createdAt: new Date() };
+    this.dialogPromptsMap.set(id, n); return n;
+  }
+  async updateDialogPrompt(id: number, prompt: Partial<InsertDialogPrompt>) {
+    const e = this.dialogPromptsMap.get(id); if (!e) return undefined;
+    const u = { ...e, ...prompt }; this.dialogPromptsMap.set(id, u); return u;
+  }
+  async deleteDialogPrompt(id: number) { return this.dialogPromptsMap.delete(id); }
+
+  async getWarmupExercises() { return Array.from(this.warmupExercisesMap.values()).sort((a, b) => a.id - b.id); }
+  async createWarmupExercise(e: InsertWarmupExercise): Promise<WarmupExercise> {
+    const id = this.nextId.warmup++;
+    const n: WarmupExercise = { ...e, id, userId: null, createdAt: new Date() };
+    this.warmupExercisesMap.set(id, n); return n;
+  }
+  async updateWarmupExercise(id: number, e: Partial<InsertWarmupExercise>) {
+    const ex = this.warmupExercisesMap.get(id); if (!ex) return undefined;
+    const u = { ...ex, ...e }; this.warmupExercisesMap.set(id, u); return u;
+  }
+  async deleteWarmupExercise(id: number) { return this.warmupExercisesMap.delete(id); }
+
+  // ── User-scoped ───────────────────────────────────────────────────────────
   async getPracticeSessions(uid: number) { return this.byUser(this.practiceSessionsMap, uid).sort((a, b) => b.id - a.id); }
   async createPracticeSession(uid: number, session: InsertPracticeSession): Promise<PracticeSession> {
     const id = this.nextId.session++;
@@ -98,20 +131,6 @@ class MemStorage implements IStorage {
   }
   async deletePracticeSession(uid: number, id: number) {
     return this.ownedItem(this.practiceSessionsMap, uid, id) ? this.practiceSessionsMap.delete(id) : false;
-  }
-
-  async getDialogPrompts(uid: number) { return this.byUser(this.dialogPromptsMap, uid).sort((a, b) => a.id - b.id); }
-  async createDialogPrompt(uid: number, prompt: InsertDialogPrompt): Promise<DialogPrompt> {
-    const id = this.nextId.dialog++;
-    const n: DialogPrompt = { ...prompt, id, userId: uid, createdAt: new Date() };
-    this.dialogPromptsMap.set(id, n); return n;
-  }
-  async updateDialogPrompt(uid: number, id: number, prompt: Partial<InsertDialogPrompt>) {
-    const e = this.ownedItem(this.dialogPromptsMap, uid, id); if (!e) return undefined;
-    const u = { ...e, ...prompt }; this.dialogPromptsMap.set(id, u); return u;
-  }
-  async deleteDialogPrompt(uid: number, id: number) {
-    return this.ownedItem(this.dialogPromptsMap, uid, id) ? this.dialogPromptsMap.delete(id) : false;
   }
 
   async getJournalEntries(uid: number) { return this.byUser(this.journalEntriesMap, uid).sort((a, b) => b.id - a.id); }
@@ -137,20 +156,6 @@ class MemStorage implements IStorage {
   }
   async deleteYesAndResponse(uid: number, id: number) {
     return this.ownedItem(this.yesAndResponsesMap, uid, id) ? this.yesAndResponsesMap.delete(id) : false;
-  }
-
-  async getWarmupExercises(uid: number) { return this.byUser(this.warmupExercisesMap, uid).sort((a, b) => a.id - b.id); }
-  async createWarmupExercise(uid: number, e: InsertWarmupExercise): Promise<WarmupExercise> {
-    const id = this.nextId.warmup++;
-    const n: WarmupExercise = { ...e, id, userId: uid, createdAt: new Date() };
-    this.warmupExercisesMap.set(id, n); return n;
-  }
-  async updateWarmupExercise(uid: number, id: number, e: Partial<InsertWarmupExercise>) {
-    const ex = this.ownedItem(this.warmupExercisesMap, uid, id); if (!ex) return undefined;
-    const u = { ...ex, ...e }; this.warmupExercisesMap.set(id, u); return u;
-  }
-  async deleteWarmupExercise(uid: number, id: number) {
-    return this.ownedItem(this.warmupExercisesMap, uid, id) ? this.warmupExercisesMap.delete(id) : false;
   }
 
   async getScenePremises(uid: number) { return this.byUser(this.scenePremisesMap, uid).sort((a, b) => b.id - a.id); }
@@ -184,7 +189,7 @@ class MemStorage implements IStorage {
 
 // ── PostgreSQL Storage ────────────────────────────────────────────────────────
 async function createDatabaseStorage(): Promise<IStorage> {
-  const { eq, desc, asc, and } = await import("drizzle-orm");
+  const { eq, desc, asc, and, isNull } = await import("drizzle-orm");
   const { Pool } = await import("pg");
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const schema = await import("@shared/schema");
@@ -205,20 +210,27 @@ async function createDatabaseStorage(): Promise<IStorage> {
   const ownAndId = (table: any, uid: number, id: number) => and(eq(table.userId, uid), eq(table.id, id));
 
   return {
-    async getFocusItems(uid) { return db.select().from(schema.focusItems).where(own(schema.focusItems, uid)).orderBy(asc(schema.focusItems.id)); },
-    async getFocusItem(uid, id) { const [r] = await db.select().from(schema.focusItems).where(ownAndId(schema.focusItems, uid, id)); return r; },
-    async createFocusItem(uid, item) { const [r] = await db.insert(schema.focusItems).values({ ...item, userId: uid }).returning(); return r; },
-    async updateFocusItem(uid, id, item) { const [r] = await db.update(schema.focusItems).set(item).where(ownAndId(schema.focusItems, uid, id)).returning(); return r; },
-    async deleteFocusItem(uid, id) { const r = await db.delete(schema.focusItems).where(ownAndId(schema.focusItems, uid, id)).returning(); return r.length > 0; },
+    // ── Shared ──────────────────────────────────────────────────────────────
+    async getFocusItems() { return db.select().from(schema.focusItems).orderBy(asc(schema.focusItems.id)); },
+    async getFocusItem(id) { const [r] = await db.select().from(schema.focusItems).where(eq(schema.focusItems.id, id)); return r; },
+    async createFocusItem(item) { const [r] = await db.insert(schema.focusItems).values({ ...item, userId: null }).returning(); return r; },
+    async updateFocusItem(id, item) { const [r] = await db.update(schema.focusItems).set(item).where(eq(schema.focusItems.id, id)).returning(); return r; },
+    async deleteFocusItem(id) { const r = await db.delete(schema.focusItems).where(eq(schema.focusItems.id, id)).returning(); return r.length > 0; },
 
+    async getDialogPrompts() { return db.select().from(schema.dialogPrompts).orderBy(asc(schema.dialogPrompts.id)); },
+    async createDialogPrompt(p) { const [r] = await db.insert(schema.dialogPrompts).values({ ...p, userId: null }).returning(); return r; },
+    async updateDialogPrompt(id, p) { const [r] = await db.update(schema.dialogPrompts).set(p).where(eq(schema.dialogPrompts.id, id)).returning(); return r; },
+    async deleteDialogPrompt(id) { const r = await db.delete(schema.dialogPrompts).where(eq(schema.dialogPrompts.id, id)).returning(); return r.length > 0; },
+
+    async getWarmupExercises() { return db.select().from(schema.warmupExercises).orderBy(asc(schema.warmupExercises.id)); },
+    async createWarmupExercise(e) { const [r] = await db.insert(schema.warmupExercises).values({ ...e, userId: null }).returning(); return r; },
+    async updateWarmupExercise(id, e) { const [r] = await db.update(schema.warmupExercises).set(e).where(eq(schema.warmupExercises.id, id)).returning(); return r; },
+    async deleteWarmupExercise(id) { const r = await db.delete(schema.warmupExercises).where(eq(schema.warmupExercises.id, id)).returning(); return r.length > 0; },
+
+    // ── User-scoped ──────────────────────────────────────────────────────────
     async getPracticeSessions(uid) { return db.select().from(schema.practiceSessions).where(own(schema.practiceSessions, uid)).orderBy(desc(schema.practiceSessions.id)); },
     async createPracticeSession(uid, s) { const [r] = await db.insert(schema.practiceSessions).values({ ...s, userId: uid }).returning(); return r; },
     async deletePracticeSession(uid, id) { const r = await db.delete(schema.practiceSessions).where(ownAndId(schema.practiceSessions, uid, id)).returning(); return r.length > 0; },
-
-    async getDialogPrompts(uid) { return db.select().from(schema.dialogPrompts).where(own(schema.dialogPrompts, uid)).orderBy(asc(schema.dialogPrompts.id)); },
-    async createDialogPrompt(uid, p) { const [r] = await db.insert(schema.dialogPrompts).values({ ...p, userId: uid }).returning(); return r; },
-    async updateDialogPrompt(uid, id, p) { const [r] = await db.update(schema.dialogPrompts).set(p).where(ownAndId(schema.dialogPrompts, uid, id)).returning(); return r; },
-    async deleteDialogPrompt(uid, id) { const r = await db.delete(schema.dialogPrompts).where(ownAndId(schema.dialogPrompts, uid, id)).returning(); return r.length > 0; },
 
     async getJournalEntries(uid) { return db.select().from(schema.journalEntries).where(own(schema.journalEntries, uid)).orderBy(desc(schema.journalEntries.id)); },
     async getJournalEntry(uid, id) { const [r] = await db.select().from(schema.journalEntries).where(ownAndId(schema.journalEntries, uid, id)); return r; },
@@ -229,11 +241,6 @@ async function createDatabaseStorage(): Promise<IStorage> {
     async getYesAndResponses(uid) { return db.select().from(schema.yesAndResponses).where(own(schema.yesAndResponses, uid)).orderBy(desc(schema.yesAndResponses.id)); },
     async createYesAndResponse(uid, r) { const [row] = await db.insert(schema.yesAndResponses).values({ ...r, userId: uid }).returning(); return row; },
     async deleteYesAndResponse(uid, id) { const r = await db.delete(schema.yesAndResponses).where(ownAndId(schema.yesAndResponses, uid, id)).returning(); return r.length > 0; },
-
-    async getWarmupExercises(uid) { return db.select().from(schema.warmupExercises).where(own(schema.warmupExercises, uid)).orderBy(asc(schema.warmupExercises.id)); },
-    async createWarmupExercise(uid, e) { const [r] = await db.insert(schema.warmupExercises).values({ ...e, userId: uid }).returning(); return r; },
-    async updateWarmupExercise(uid, id, e) { const [r] = await db.update(schema.warmupExercises).set(e).where(ownAndId(schema.warmupExercises, uid, id)).returning(); return r; },
-    async deleteWarmupExercise(uid, id) { const r = await db.delete(schema.warmupExercises).where(ownAndId(schema.warmupExercises, uid, id)).returning(); return r.length > 0; },
 
     async getScenePremises(uid) { return db.select().from(schema.scenePremises).where(own(schema.scenePremises, uid)).orderBy(desc(schema.scenePremises.id)); },
     async createScenePremise(uid, s) { const [r] = await db.insert(schema.scenePremises).values({ ...s, userId: uid }).returning(); return r; },
@@ -249,7 +256,6 @@ async function createDatabaseStorage(): Promise<IStorage> {
 
 // ── Export ────────────────────────────────────────────────────────────────────
 let _storage: IStorage | null = null;
-
 export async function getStorage(): Promise<IStorage> {
   if (_storage) return _storage;
   if (process.env.DATABASE_URL) {
@@ -261,9 +267,5 @@ export async function getStorage(): Promise<IStorage> {
   }
   return _storage;
 }
-
 export let storage: IStorage = new MemStorage();
-
-export async function initStorage() {
-  storage = await getStorage();
-}
+export async function initStorage() { storage = await getStorage(); }

@@ -1,11 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { WarmupExercise } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/context/AuthContext";
-import { encryptFields, decryptArray } from "@/lib/crypto";
 
 // ── Default seed exercises (seeded into DB on first generate if empty) ────────
 const DEFAULT_EXERCISES = [
@@ -33,12 +31,10 @@ type FormState = { name: string; duration: string; description: string };
 
 const EMPTY_FORM: FormState = { name: "", duration: "3 min", description: "" };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const WARMUP_ENCRYPTED_FIELDS: any[] = ["name", "description"];
+// Warmup exercises are SHARED — no auth, no encryption
 
 export default function WarmUpPage() {
   const { toast } = useToast();
-  const { dataKey } = useAuth();
   const [drawnSet, setDrawnSet] = useState<WarmupExercise[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -46,21 +42,14 @@ export default function WarmUpPage() {
   const [editState, setEditState] = useState<EditState>(null);
   const [tab, setTab] = useState<"draw" | "library">("draw");
 
-  const { data: rawExercises = [], isLoading } = useQuery<WarmupExercise[]>({
+  // Exercises are SHARED — no auth needed, plain text
+  const { data: exercises = [], isLoading } = useQuery<WarmupExercise[]>({
     queryKey: ["/api/warmup-exercises"],
   });
-  const [exercises, setExercises] = useState<WarmupExercise[]>([]);
-  useEffect(() => {
-    if (!rawExercises.length) { setExercises([]); return; }
-    if (!dataKey) { setExercises(rawExercises); return; }
-    decryptArray(rawExercises, WARMUP_ENCRYPTED_FIELDS, dataKey).then(setExercises);
-  }, [rawExercises, dataKey]);
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {
-      if (!dataKey) throw new Error("No encryption key");
-      const encrypted = await encryptFields(data, WARMUP_ENCRYPTED_FIELDS, dataKey);
-      await apiRequest("POST", "/api/warmup-exercises", encrypted);
+      await apiRequest("POST", "/api/warmup-exercises", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/warmup-exercises"] });
@@ -72,9 +61,7 @@ export default function WarmUpPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => {
-      if (!dataKey) throw new Error("No encryption key");
-      const encrypted = await encryptFields(data, WARMUP_ENCRYPTED_FIELDS, dataKey);
-      await apiRequest("PATCH", `/api/warmup-exercises/${id}`, encrypted);
+      await apiRequest("PATCH", `/api/warmup-exercises/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/warmup-exercises"] });
@@ -93,13 +80,11 @@ export default function WarmUpPage() {
 
   const seedAndDraw = async () => {
     let pool = exercises;
-    // Auto-seed defaults if library is empty
+    // Auto-seed defaults if library is empty — plain text, no encryption
     if (pool.length === 0) {
-      if (!dataKey) throw new Error("No encryption key");
       const created: WarmupExercise[] = [];
       for (const ex of DEFAULT_EXERCISES) {
-        const encrypted = await encryptFields(ex, ["name", "description"], dataKey);
-        const res = await apiRequest("POST", "/api/warmup-exercises", encrypted);
+        const res = await apiRequest("POST", "/api/warmup-exercises", ex);
         created.push(await res.json());
       }
       queryClient.invalidateQueries({ queryKey: ["/api/warmup-exercises"] });

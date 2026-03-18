@@ -10,83 +10,69 @@ import {
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
-  // ── Focus Items ──────────────────────────────────────────────────────────────
-  app.get("/api/focus-items/random", requireAuth, async (req, res) => {
-    const uid = getUserId(req);
-    const items = await storage.getFocusItems(uid);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SHARED ROUTES — no auth required, anyone can read/write
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── Focus Items (shared library) ──────────────────────────────────────────
+  app.get("/api/focus-items/random", async (_req, res) => {
+    const items = await storage.getFocusItems();
     if (items.length < 3) return res.json(items);
     res.json([...items].sort(() => Math.random() - 0.5).slice(0, 3));
   });
 
-  app.get("/api/focus-items", requireAuth, async (req, res) => {
-    res.json(await storage.getFocusItems(getUserId(req)));
+  app.get("/api/focus-items", async (_req, res) => {
+    res.json(await storage.getFocusItems());
   });
 
-  app.post("/api/focus-items", requireAuth, async (req, res) => {
+  app.post("/api/focus-items", async (req, res) => {
     const result = insertFocusItemSchema.safeParse(req.body);
     if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createFocusItem(getUserId(req), result.data));
+    res.status(201).json(await storage.createFocusItem(result.data));
   });
 
-  app.patch("/api/focus-items/:id", requireAuth, async (req, res) => {
+  app.patch("/api/focus-items/:id", async (req, res) => {
     const result = insertFocusItemSchema.partial().safeParse(req.body);
     if (!result.success) return res.status(400).json({ error: result.error.issues });
-    const updated = await storage.updateFocusItem(getUserId(req), parseInt(req.params.id), result.data);
+    const updated = await storage.updateFocusItem(parseInt(req.params.id), result.data);
     if (!updated) return res.status(404).json({ error: "Not found" });
     res.json(updated);
   });
 
-  app.delete("/api/focus-items/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deleteFocusItem(getUserId(req), parseInt(req.params.id));
+  app.delete("/api/focus-items/:id", async (req, res) => {
+    const deleted = await storage.deleteFocusItem(parseInt(req.params.id));
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.status(204).end();
   });
 
-  // ── Practice Sessions ────────────────────────────────────────────────────────
-  app.get("/api/practice-sessions", requireAuth, async (req, res) => {
-    res.json(await storage.getPracticeSessions(getUserId(req)));
+  // ── Dialog Prompts (shared — used by Emotion Drill) ───────────────────────
+  app.get("/api/dialog-prompts", async (_req, res) => {
+    res.json(await storage.getDialogPrompts());
   });
 
-  app.post("/api/practice-sessions", requireAuth, async (req, res) => {
-    const result = insertPracticeSessionSchema.safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createPracticeSession(getUserId(req), result.data));
-  });
-
-  app.delete("/api/practice-sessions/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deletePracticeSession(getUserId(req), parseInt(req.params.id));
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.status(204).end();
-  });
-
-  // ── Dialog Prompts ───────────────────────────────────────────────────────────
-  app.get("/api/dialog-prompts", requireAuth, async (req, res) => {
-    res.json(await storage.getDialogPrompts(getUserId(req)));
-  });
-
-  app.post("/api/dialog-prompts", requireAuth, async (req, res) => {
+  app.post("/api/dialog-prompts", async (req, res) => {
     const result = insertDialogPromptSchema.safeParse(req.body);
     if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createDialogPrompt(getUserId(req), result.data));
+    res.status(201).json(await storage.createDialogPrompt(result.data));
   });
 
-  app.patch("/api/dialog-prompts/:id", requireAuth, async (req, res) => {
+  app.patch("/api/dialog-prompts/:id", async (req, res) => {
     const result = insertDialogPromptSchema.partial().safeParse(req.body);
     if (!result.success) return res.status(400).json({ error: result.error.issues });
-    const updated = await storage.updateDialogPrompt(getUserId(req), parseInt(req.params.id), result.data);
+    const updated = await storage.updateDialogPrompt(parseInt(req.params.id), result.data);
     if (!updated) return res.status(404).json({ error: "Not found" });
     res.json(updated);
   });
 
-  app.delete("/api/dialog-prompts/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deleteDialogPrompt(getUserId(req), parseInt(req.params.id));
+  app.delete("/api/dialog-prompts/:id", async (req, res) => {
+    const deleted = await storage.deleteDialogPrompt(parseInt(req.params.id));
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.status(204).end();
   });
 
-  // ── Emotion Drill ────────────────────────────────────────────────────────────
-  app.get("/api/emotion-drill/random", requireAuth, async (req, res) => {
-    const prompts = await storage.getDialogPrompts(getUserId(req));
+  // ── Emotion Drill (shared prompts) ────────────────────────────────────────
+  app.get("/api/emotion-drill/random", async (_req, res) => {
+    const prompts = await storage.getDialogPrompts();
     const emotions = [
       "Joy", "Grief", "Rage", "Fear", "Disgust", "Shame",
       "Longing", "Envy", "Wonder", "Tenderness", "Humiliation",
@@ -99,168 +85,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ prompt, emotion });
   });
 
-  // ── Journal Entries ──────────────────────────────────────────────────────────
-  app.get("/api/journal-entries", requireAuth, async (req, res) => {
-    res.json(await storage.getJournalEntries(getUserId(req)));
+  // ── Warmup Exercises (shared library) ────────────────────────────────────
+  app.get("/api/warmup-exercises", async (_req, res) => {
+    res.json(await storage.getWarmupExercises());
   });
 
-  app.get("/api/journal-entries/:id", requireAuth, async (req, res) => {
-    const entry = await storage.getJournalEntry(getUserId(req), parseInt(req.params.id));
-    if (!entry) return res.status(404).json({ error: "Not found" });
-    res.json(entry);
-  });
-
-  app.post("/api/journal-entries", requireAuth, async (req, res) => {
-    const result = insertJournalEntrySchema.safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createJournalEntry(getUserId(req), result.data));
-  });
-
-  app.patch("/api/journal-entries/:id", requireAuth, async (req, res) => {
-    const result = insertJournalEntrySchema.partial().safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    const updated = await storage.updateJournalEntry(getUserId(req), parseInt(req.params.id), result.data);
-    if (!updated) return res.status(404).json({ error: "Not found" });
-    res.json(updated);
-  });
-
-  app.delete("/api/journal-entries/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deleteJournalEntry(getUserId(req), parseInt(req.params.id));
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.status(204).end();
-  });
-
-  // ── Warmup Exercises ─────────────────────────────────────────────────────────
-  app.get("/api/warmup-exercises", requireAuth, async (req, res) => {
-    res.json(await storage.getWarmupExercises(getUserId(req)));
-  });
-
-  app.get("/api/warmup-exercises/random", requireAuth, async (req, res) => {
-    const all = await storage.getWarmupExercises(getUserId(req));
+  app.get("/api/warmup-exercises/random", async (_req, res) => {
+    const all = await storage.getWarmupExercises();
     if (all.length === 0) return res.json({ exercises: [] });
     const count = Math.min(all.length, 3 + Math.floor(Math.random() * 3));
     res.json({ exercises: [...all].sort(() => Math.random() - 0.5).slice(0, count) });
   });
 
-  app.post("/api/warmup-exercises", requireAuth, async (req, res) => {
+  app.post("/api/warmup-exercises", async (req, res) => {
     const result = insertWarmupExerciseSchema.safeParse(req.body);
     if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createWarmupExercise(getUserId(req), result.data));
+    res.status(201).json(await storage.createWarmupExercise(result.data));
   });
 
-  app.patch("/api/warmup-exercises/:id", requireAuth, async (req, res) => {
+  app.patch("/api/warmup-exercises/:id", async (req, res) => {
     const result = insertWarmupExerciseSchema.partial().safeParse(req.body);
     if (!result.success) return res.status(400).json({ error: result.error.issues });
-    const updated = await storage.updateWarmupExercise(getUserId(req), parseInt(req.params.id), result.data);
+    const updated = await storage.updateWarmupExercise(parseInt(req.params.id), result.data);
     if (!updated) return res.status(404).json({ error: "Not found" });
     res.json(updated);
   });
 
-  app.delete("/api/warmup-exercises/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deleteWarmupExercise(getUserId(req), parseInt(req.params.id));
+  app.delete("/api/warmup-exercises/:id", async (req, res) => {
+    const deleted = await storage.deleteWarmupExercise(parseInt(req.params.id));
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.status(204).end();
   });
 
-  // ── Scene Premises ───────────────────────────────────────────────────────────
-  app.get("/api/scene-premises", requireAuth, async (req, res) => {
-    res.json(await storage.getScenePremises(getUserId(req)));
-  });
-
-  app.post("/api/scene-premises", requireAuth, async (req, res) => {
-    const result = insertScenePremiseSchema.safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createScenePremise(getUserId(req), result.data));
-  });
-
-  app.patch("/api/scene-premises/:id", requireAuth, async (req, res) => {
-    const result = insertScenePremiseSchema.partial().safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    const updated = await storage.updateScenePremise(getUserId(req), parseInt(req.params.id), result.data);
-    if (!updated) return res.status(404).json({ error: "Not found" });
-    res.json(updated);
-  });
-
-  app.delete("/api/scene-premises/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deleteScenePremise(getUserId(req), parseInt(req.params.id));
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.status(204).end();
-  });
-
-  // ── Saved Characters ─────────────────────────────────────────────────────────
-  app.get("/api/saved-characters", requireAuth, async (req, res) => {
-    res.json(await storage.getSavedCharacters(getUserId(req)));
-  });
-
-  app.post("/api/saved-characters", requireAuth, async (req, res) => {
-    const result = insertSavedCharacterSchema.safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createSavedCharacter(getUserId(req), result.data));
-  });
-
-  app.patch("/api/saved-characters/:id", requireAuth, async (req, res) => {
-    const result = insertSavedCharacterSchema.partial().safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    const updated = await storage.updateSavedCharacter(getUserId(req), parseInt(req.params.id), result.data);
-    if (!updated) return res.status(404).json({ error: "Not found" });
-    res.json(updated);
-  });
-
-  app.delete("/api/saved-characters/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deleteSavedCharacter(getUserId(req), parseInt(req.params.id));
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.status(204).end();
-  });
-
-  // ── Yes-And Trainer ──────────────────────────────────────────────────────────
-  app.get("/api/yes-and/prompts/random", requireAuth, (_req, res) => {
-    const prompts = [
-      "I just found out I can talk to animals.",
-      "We're going to be late for the most important meeting of our lives.",
-      "This isn't the house I grew up in.",
-      "I've decided to quit my job and sail around the world.",
-      "Someone just left a baby on our doorstep.",
-      "I think the coffee shop is haunted.",
-      "I bought us matching tattoos.",
-      "We won the lottery but lost the ticket.",
-      "My long-lost twin just showed up at the door.",
-      "The museum called — apparently we stole something last night.",
-      "I enrolled us in a competitive pie-eating contest.",
-      "Our landlord is actually a wizard.",
-      "I've been practicing ventriloquism in secret for six months.",
-      "The neighbor's dog can apparently predict the future.",
-      "I accidentally adopted a whole family of raccoons.",
-      "I signed us up to be on a reality TV show.",
-      "The doctor said I can only speak in questions for the next week.",
-      "I found a treasure map in the attic.",
-      "Our vacation rental is a decommissioned submarine.",
-      "I've been secretly training for the Olympics.",
-      "Someone's been living in our walls for three years.",
-      "I just agreed to house-sit a jaguar.",
-      "The mayor wants us to run the city for a day.",
-      "I may have accidentally started a cult.",
-      "I traded our car for a horse.",
-    ];
-    res.json({ prompt: prompts[Math.floor(Math.random() * prompts.length)] });
-  });
-
-  app.get("/api/yes-and/responses", requireAuth, async (req, res) => {
-    res.json(await storage.getYesAndResponses(getUserId(req)));
-  });
-
-  app.post("/api/yes-and/responses", requireAuth, async (req, res) => {
-    const result = insertYesAndResponseSchema.safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues });
-    res.status(201).json(await storage.createYesAndResponse(getUserId(req), result.data));
-  });
-
-  app.delete("/api/yes-and/responses/:id", requireAuth, async (req, res) => {
-    const deleted = await storage.deleteYesAndResponse(getUserId(req), parseInt(req.params.id));
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.status(204).end();
-  });
-
-  // ── Static generators (no auth needed for these pure random endpoints) ───────
+  // ── Static random generators (always shared, no DB) ──────────────────────
   app.get("/api/scene-partner/random", (_req, res) => {
     const characters = [
       { name: "A disgraced surgeon", want: "to redeem themselves" },
@@ -335,6 +192,156 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const wants = ["To be forgiven for something they haven't admitted yet","To find the one person who understands them","To finish what they started twenty years ago","To be taken seriously just once","To leave before anyone notices they were there","To prove a childhood bully wrong","To finally say the thing they've been holding back","To become someone unrecognizable from who they were","To matter to a stranger","To get home before dark","To stop pretending everything is fine","To be the last one standing","To feel something real","To never have to explain themselves again","To find out if the story they tell about themselves is true"];
     const r = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
     res.json({ name: `${r(firstNames)} ${r(lastNames)}`, occupation: r(occupations), quirk: r(quirks), want: r(wants) });
+  });
+
+  app.get("/api/yes-and/prompts/random", (_req, res) => {
+    const prompts = [
+      "I just found out I can talk to animals.",
+      "We're going to be late for the most important meeting of our lives.",
+      "This isn't the house I grew up in.",
+      "I've decided to quit my job and sail around the world.",
+      "Someone just left a baby on our doorstep.",
+      "I think the coffee shop is haunted.",
+      "I bought us matching tattoos.",
+      "We won the lottery but lost the ticket.",
+      "My long-lost twin just showed up at the door.",
+      "The museum called — apparently we stole something last night.",
+      "I enrolled us in a competitive pie-eating contest.",
+      "Our landlord is actually a wizard.",
+      "I've been practicing ventriloquism in secret for six months.",
+      "The neighbor's dog can apparently predict the future.",
+      "I accidentally adopted a whole family of raccoons.",
+      "I signed us up to be on a reality TV show.",
+      "The doctor said I can only speak in questions for the next week.",
+      "I found a treasure map in the attic.",
+      "Our vacation rental is a decommissioned submarine.",
+      "I've been secretly training for the Olympics.",
+      "Someone's been living in our walls for three years.",
+      "I just agreed to house-sit a jaguar.",
+      "The mayor wants us to run the city for a day.",
+      "I may have accidentally started a cult.",
+      "I traded our car for a horse.",
+    ];
+    res.json({ prompt: prompts[Math.floor(Math.random() * prompts.length)] });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // USER-SCOPED ROUTES — requireAuth on all of these
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── Practice Sessions (Focus DB log) ─────────────────────────────────────
+  app.get("/api/practice-sessions", requireAuth, async (req, res) => {
+    res.json(await storage.getPracticeSessions(getUserId(req)));
+  });
+
+  app.post("/api/practice-sessions", requireAuth, async (req, res) => {
+    const result = insertPracticeSessionSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    res.status(201).json(await storage.createPracticeSession(getUserId(req), result.data));
+  });
+
+  app.delete("/api/practice-sessions/:id", requireAuth, async (req, res) => {
+    const deleted = await storage.deletePracticeSession(getUserId(req), parseInt(req.params.id));
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.status(204).end();
+  });
+
+  // ── Journal Entries ───────────────────────────────────────────────────────
+  app.get("/api/journal-entries", requireAuth, async (req, res) => {
+    res.json(await storage.getJournalEntries(getUserId(req)));
+  });
+
+  app.get("/api/journal-entries/:id", requireAuth, async (req, res) => {
+    const entry = await storage.getJournalEntry(getUserId(req), parseInt(req.params.id));
+    if (!entry) return res.status(404).json({ error: "Not found" });
+    res.json(entry);
+  });
+
+  app.post("/api/journal-entries", requireAuth, async (req, res) => {
+    const result = insertJournalEntrySchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    res.status(201).json(await storage.createJournalEntry(getUserId(req), result.data));
+  });
+
+  app.patch("/api/journal-entries/:id", requireAuth, async (req, res) => {
+    const result = insertJournalEntrySchema.partial().safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    const updated = await storage.updateJournalEntry(getUserId(req), parseInt(req.params.id), result.data);
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/journal-entries/:id", requireAuth, async (req, res) => {
+    const deleted = await storage.deleteJournalEntry(getUserId(req), parseInt(req.params.id));
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.status(204).end();
+  });
+
+  // ── Yes-And Responses ─────────────────────────────────────────────────────
+  app.get("/api/yes-and/responses", requireAuth, async (req, res) => {
+    res.json(await storage.getYesAndResponses(getUserId(req)));
+  });
+
+  app.post("/api/yes-and/responses", requireAuth, async (req, res) => {
+    const result = insertYesAndResponseSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    res.status(201).json(await storage.createYesAndResponse(getUserId(req), result.data));
+  });
+
+  app.delete("/api/yes-and/responses/:id", requireAuth, async (req, res) => {
+    const deleted = await storage.deleteYesAndResponse(getUserId(req), parseInt(req.params.id));
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.status(204).end();
+  });
+
+  // ── Scene Premises ────────────────────────────────────────────────────────
+  app.get("/api/scene-premises", requireAuth, async (req, res) => {
+    res.json(await storage.getScenePremises(getUserId(req)));
+  });
+
+  app.post("/api/scene-premises", requireAuth, async (req, res) => {
+    const result = insertScenePremiseSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    res.status(201).json(await storage.createScenePremise(getUserId(req), result.data));
+  });
+
+  app.patch("/api/scene-premises/:id", requireAuth, async (req, res) => {
+    const result = insertScenePremiseSchema.partial().safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    const updated = await storage.updateScenePremise(getUserId(req), parseInt(req.params.id), result.data);
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/scene-premises/:id", requireAuth, async (req, res) => {
+    const deleted = await storage.deleteScenePremise(getUserId(req), parseInt(req.params.id));
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.status(204).end();
+  });
+
+  // ── Saved Characters ──────────────────────────────────────────────────────
+  app.get("/api/saved-characters", requireAuth, async (req, res) => {
+    res.json(await storage.getSavedCharacters(getUserId(req)));
+  });
+
+  app.post("/api/saved-characters", requireAuth, async (req, res) => {
+    const result = insertSavedCharacterSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    res.status(201).json(await storage.createSavedCharacter(getUserId(req), result.data));
+  });
+
+  app.patch("/api/saved-characters/:id", requireAuth, async (req, res) => {
+    const result = insertSavedCharacterSchema.partial().safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues });
+    const updated = await storage.updateSavedCharacter(getUserId(req), parseInt(req.params.id), result.data);
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/saved-characters/:id", requireAuth, async (req, res) => {
+    const deleted = await storage.deleteSavedCharacter(getUserId(req), parseInt(req.params.id));
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.status(204).end();
   });
 
   return httpServer;

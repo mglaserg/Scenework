@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { encryptFields, decryptArray } from "@/lib/crypto";
-import { Plus, Edit2, Trash2, Shuffle, BookOpen, X, Check, MousePointerClick } from "lucide-react";
+import { Plus, Edit2, Trash2, Shuffle, BookOpen, X, Check, MousePointerClick, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -124,14 +124,15 @@ function FocusCard({
 type FormState = { title: string; category: string; description: string };
 const BLANK: FormState = { title: "", category: "technique", description: "" };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const FOCUS_ENCRYPTED_FIELDS: any[] = ["title", "description"];
+// Practice sessions are user-scoped and encrypted
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SESSION_ENCRYPTED_FIELDS: any[] = ["notes"];
 
 export default function FocusPage() {
   const { toast } = useToast();
-  const { dataKey } = useAuth();
+  const { user, dataKey } = useAuth();
+  const isLoggedIn = !!user && !!dataKey;
+
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<FocusItem | null>(null);
   const [form, setForm] = useState<FormState>(BLANK);
@@ -141,40 +142,34 @@ export default function FocusPage() {
   const [drawMode, setDrawMode] = useState<"random" | "pick">("random");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const { data: rawItems = [], isLoading } = useQuery<FocusItem[]>({
+  // Focus items are SHARED — no auth, no encryption
+  const { data: items = [], isLoading } = useQuery<FocusItem[]>({
     queryKey: ["/api/focus-items"],
   });
-  const [items, setItems] = useState<FocusItem[]>([]);
-  useEffect(() => {
-    if (!rawItems.length) { setItems([]); return; }
-    if (!dataKey) { setItems(rawItems); return; }
-    decryptArray(rawItems, FOCUS_ENCRYPTED_FIELDS, dataKey).then(setItems);
-  }, [rawItems, dataKey]);
 
+  // Practice sessions are USER-SCOPED — need auth + encrypted
   const { data: rawSessions = [] } = useQuery<PracticeSession[]>({
     queryKey: ["/api/practice-sessions"],
+    enabled: isLoggedIn,
   });
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
   useEffect(() => {
     if (!rawSessions.length) { setSessions([]); return; }
-    if (!dataKey) { setSessions(rawSessions); return; }
+    if (!dataKey) { setSessions([]); return; }
     decryptArray(rawSessions, SESSION_ENCRYPTED_FIELDS, dataKey).then(setSessions);
   }, [rawSessions, dataKey]);
 
+  // Focus items: plain text, no encryption needed
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {
-      if (!dataKey) throw new Error("No encryption key");
-      const encrypted = await encryptFields(data, FOCUS_ENCRYPTED_FIELDS, dataKey);
-      return apiRequest("POST", "/api/focus-items", encrypted);
+      return apiRequest("POST", "/api/focus-items", data);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/focus-items"] }); setShowForm(false); setForm(BLANK); toast({ title: "Focus item added" }); },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => {
-      if (!dataKey) throw new Error("No encryption key");
-      const encrypted = await encryptFields(data, FOCUS_ENCRYPTED_FIELDS, dataKey);
-      return apiRequest("PATCH", `/api/focus-items/${id}`, encrypted);
+      return apiRequest("PATCH", `/api/focus-items/${id}`, data);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/focus-items"] }); setEditingItem(null); setForm(BLANK); toast({ title: "Updated" }); },
   });
@@ -184,6 +179,7 @@ export default function FocusPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/focus-items"] }); toast({ title: "Removed" }); },
   });
 
+  // Session logging requires auth + encryption
   const sessionMutation = useMutation({
     mutationFn: async (data: { focusItemIds: string; notes?: string }) => {
       if (!dataKey) throw new Error("No encryption key");
@@ -222,6 +218,10 @@ export default function FocusPage() {
 
   function logSession() {
     if (drawnItems.length === 0) return;
+    if (!isLoggedIn) {
+      toast({ title: "Sign in to log sessions", description: "Create an account to track your practice history." });
+      return;
+    }
     sessionMutation.mutate({
       focusItemIds: JSON.stringify(drawnItems.map(i => i.id)),
       notes: sessionNotes || undefined,
@@ -396,9 +396,10 @@ export default function FocusPage() {
                 data-testid="session-notes-input"
                 value={sessionNotes}
                 onChange={e => setSessionNotes(e.target.value)}
-                placeholder="Add session notes (optional)..."
+                placeholder={isLoggedIn ? "Add session notes (optional)..." : "Sign in to log sessions with notes..."}
                 rows={2}
-                style={{ fontSize: "0.82rem", background: "hsl(30 8% 13%)", border: "1px solid hsl(30 8% 22%)", resize: "none" }}
+                disabled={!isLoggedIn}
+                style={{ fontSize: "0.82rem", background: "hsl(30 8% 13%)", border: "1px solid hsl(30 8% 22%)", resize: "none", opacity: isLoggedIn ? 1 : 0.5 }}
               />
             </div>
           </div>
@@ -531,8 +532,8 @@ export default function FocusPage() {
         </div>
       )}
 
-      {/* Session log */}
-      {sessions.length > 0 && (
+      {/* Session log — only shown when logged in */}
+      {isLoggedIn && sessions.length > 0 && (
         <div style={{ marginTop: 40 }}>
           <h2 style={{ fontFamily: "'Zodiak', serif", fontWeight: 600, fontSize: "1rem", marginBottom: 14, color: "hsl(38 20% 80%)" }}>
             Session Log
@@ -578,6 +579,16 @@ export default function FocusPage() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Sign-in nudge for session log when logged out */}
+      {!isLoggedIn && drawnItems.length === 0 && (
+        <div style={{ marginTop: 40, padding: "16px 20px", background: "hsl(30 8% 10%)", border: "1px solid hsl(30 8% 18%)", borderRadius: 10, display: "flex", alignItems: "center", gap: 12 }}>
+          <LogIn size={16} style={{ color: "hsl(38 8% 45%)", flexShrink: 0 }} />
+          <p style={{ fontSize: "0.82rem", color: "hsl(38 8% 50%)" }}>
+            <strong style={{ color: "hsl(38 15% 70%)" }}>Sign in</strong> to log practice sessions and track your progress over time.
+          </p>
         </div>
       )}
     </div>

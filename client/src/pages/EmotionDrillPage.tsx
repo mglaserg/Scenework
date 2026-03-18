@@ -1,9 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/context/AuthContext";
-import { encryptFields, decryptArray, decryptFields } from "@/lib/crypto";
 import { RefreshCw, Plus, Trash2, Edit2, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,12 +43,10 @@ type DrillResult = { prompt: { id: number; line: string; context: string | null 
 type FormState = { line: string; context: string };
 const BLANK: FormState = { line: "", context: "" };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const DIALOG_ENCRYPTED_FIELDS: any[] = ["line", "context"];
+// Dialog prompts are SHARED — no auth, no encryption
 
 export default function EmotionDrillPage() {
   const { toast } = useToast();
-  const { dataKey } = useAuth();
   const [drill, setDrill] = useState<DrillResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showManager, setShowManager] = useState(false);
@@ -58,30 +54,21 @@ export default function EmotionDrillPage() {
   const [editingPrompt, setEditingPrompt] = useState<DialogPrompt | null>(null);
   const [form, setForm] = useState<FormState>(BLANK);
 
-  const { data: rawPrompts = [] } = useQuery<DialogPrompt[]>({
+  // Prompts are SHARED — no auth needed, plain text
+  const { data: prompts = [] } = useQuery<DialogPrompt[]>({
     queryKey: ["/api/dialog-prompts"],
   });
-  const [prompts, setPrompts] = useState<DialogPrompt[]>([]);
-  useEffect(() => {
-    if (!rawPrompts.length) { setPrompts([]); return; }
-    if (!dataKey) { setPrompts(rawPrompts); return; }
-    decryptArray(rawPrompts, DIALOG_ENCRYPTED_FIELDS, dataKey).then(setPrompts);
-  }, [rawPrompts, dataKey]);
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {
-      if (!dataKey) throw new Error("No encryption key");
-      const encrypted = await encryptFields(data, DIALOG_ENCRYPTED_FIELDS, dataKey);
-      return apiRequest("POST", "/api/dialog-prompts", encrypted);
+      return apiRequest("POST", "/api/dialog-prompts", data);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/dialog-prompts"] }); setShowForm(false); setForm(BLANK); toast({ title: "Line added" }); },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => {
-      if (!dataKey) throw new Error("No encryption key");
-      const encrypted = await encryptFields(data, DIALOG_ENCRYPTED_FIELDS, dataKey);
-      return apiRequest("PATCH", `/api/dialog-prompts/${id}`, encrypted);
+      return apiRequest("PATCH", `/api/dialog-prompts/${id}`, data);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/dialog-prompts"] }); setEditingPrompt(null); setForm(BLANK); setShowForm(false); toast({ title: "Updated" }); },
   });
@@ -96,9 +83,7 @@ export default function EmotionDrillPage() {
     try {
       const res = await apiRequest("GET", "/api/emotion-drill/random");
       const data = await res.json();
-      if (dataKey) {
-        data.prompt = await decryptFields(data.prompt, DIALOG_ENCRYPTED_FIELDS, dataKey);
-      }
+      // No decryption needed — prompts are plain text
       setDrill(data);
     } catch {
       toast({ title: "Error", description: "Could not fetch a prompt." });

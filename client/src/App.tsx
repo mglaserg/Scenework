@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -17,10 +17,40 @@ import ReauthPage from "@/pages/ReauthPage";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
-// ─── Auth gate ────────────────────────────────────────────────────────────────
+// ─── Private route wrapper ────────────────────────────────────────────────────
+// Shows AuthPage or ReauthPage when the user isn't fully authenticated.
+
+function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, dataKey, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          minHeight: "60vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "hsl(38 8% 50%)",
+          fontFamily: "'Zodiak', serif",
+          fontSize: "1rem",
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  if (!user) return <AuthPage />;
+  if (!dataKey) return <ReauthPage />;
+
+  return <Component />;
+}
+
+// ─── App routes ───────────────────────────────────────────────────────────────
 
 function AppRoutes() {
-  const { user, dataKey, isLoading } = useAuth();
+  const { isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -41,31 +71,31 @@ function AppRoutes() {
     );
   }
 
-  // Not logged in at all — show auth page
-  if (!user) {
-    return <AuthPage />;
-  }
-
-  // Logged in (session cookie alive) but key was lost on page refresh —
-  // ask them to re-enter their password to restore the CryptoKey.
-  if (!dataKey) {
-    return <ReauthPage />;
-  }
-
-  // Fully authenticated — render the app
   return (
     <WouterRouter hook={useHashLocation}>
       <Layout>
         <Switch>
+          {/* ── SHARED — accessible without login ──────────────────────────── */}
           <Route path="/" component={FocusPage} />
           <Route path="/focus" component={FocusPage} />
           <Route path="/emotion-drill" component={EmotionDrillPage} />
-          <Route path="/journal" component={JournalPage} />
-          <Route path="/timer" component={TimerPage} />
-          <Route path="/scene-partner" component={ScenePartnerPage} />
           <Route path="/warmup" component={WarmUpPage} />
-          <Route path="/yes-and" component={YesAndPage} />
-          <Route path="/character" component={CharacterPage} />
+          <Route path="/timer" component={TimerPage} />
+
+          {/* ── PRIVATE — require full auth + encryption key ─────────────── */}
+          <Route path="/journal">
+            {() => <PrivateRoute component={JournalPage} />}
+          </Route>
+          <Route path="/scene-partner">
+            {() => <PrivateRoute component={ScenePartnerPage} />}
+          </Route>
+          <Route path="/yes-and">
+            {() => <PrivateRoute component={YesAndPage} />}
+          </Route>
+          <Route path="/character">
+            {() => <PrivateRoute component={CharacterPage} />}
+          </Route>
+
           <Route component={NotFound} />
         </Switch>
       </Layout>

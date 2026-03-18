@@ -289,13 +289,14 @@ export default function JournalPage() {
           </div>
 
           {/* Title + type + mood */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 140px", gap: 10, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}
+            className="journal-form-grid">
             <Input
               data-testid="journal-title-input"
               placeholder="Session title"
               value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              style={{ background: "hsl(30 8% 14%)", border: "1px solid hsl(30 8% 22%)" }}
+              style={{ background: "hsl(30 8% 14%)", border: "1px solid hsl(30 8% 22%)", gridColumn: "1 / -1" }}
             />
             <Select value={form.sessionType} onValueChange={v => setForm(f => ({ ...f, sessionType: v }))}>
               <SelectTrigger data-testid="session-type-select" style={{ background: "hsl(30 8% 14%)", border: "1px solid hsl(30 8% 22%)" }}>
