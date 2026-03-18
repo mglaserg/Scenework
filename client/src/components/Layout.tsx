@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LogOut } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 // PerplexityAttribution handled inline in footer
 
 const NAV_GROUPS = [
@@ -70,6 +71,7 @@ const NAV = NAV_GROUPS.flatMap(g => g.items);
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   const isActive = (href: string) => {
     if (href === "/focus") return location === "/" || location === "/focus";
@@ -138,13 +140,45 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        {/* Footer */}
-        <div style={{ padding: "16px 20px", borderTop: "1px solid hsl(30 8% 18%)" }}>
+        {/* Footer — user info + logout */}
+        <div style={{ padding: "14px 16px", borderTop: "1px solid hsl(30 8% 18%)" }}>
+          {user && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div
+                style={{
+                  width: 28, height: 28, borderRadius: "50%",
+                  background: "hsl(38 85% 52% / 0.2)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                  fontSize: "0.7rem", fontWeight: 700, color: "hsl(38 85% 60%)",
+                }}
+              >
+                {user.email[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: "0.72rem", color: "hsl(38 8% 55%)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {user.email}
+                </p>
+              </div>
+              <button
+                data-testid="logout-button"
+                onClick={logout}
+                title="Sign out"
+                style={{
+                  flexShrink: 0, padding: 4, cursor: "pointer",
+                  color: "hsl(38 8% 40%)", background: "none", border: "none",
+                  borderRadius: 4,
+                }}
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          )}
           <a
             href="https://www.perplexity.ai/computer"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ fontSize: "0.7rem", color: "hsl(38 5% 38%)", textDecoration: "none" }}
+            style={{ fontSize: "0.65rem", color: "hsl(38 5% 34%)", textDecoration: "none" }}
           >
             Created with Perplexity Computer
           </a>

@@ -4,23 +4,32 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { YesAndResponse } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
+import { encryptFields, decryptArray } from "@/lib/crypto";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const YESAND_ENCRYPTED_FIELDS: any[] = ["prompt", "response"];
 
 export default function YesAndPage() {
   const { toast } = useToast();
+  const { dataKey } = useAuth();
   const [prompt, setPrompt] = useState<string | null>(null);
   const [response, setResponse] = useState("");
   const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: history = [], isLoading: historyLoading } = useQuery<YesAndResponse[]>({
+  const { data: history = [], isLoading: historyLoading } = useQuery<YesAndResponse[], Error, YesAndResponse[]>({
     queryKey: ["/api/yes-and/responses"],
+    select: ((raw: YesAndResponse[]) => dataKey ? decryptArray(raw, YESAND_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: YesAndResponse[]) => YesAndResponse[],
   });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!prompt || !response.trim()) return;
-      await apiRequest("POST", "/api/yes-and/responses", { prompt, response: response.trim() });
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields({ prompt, response: response.trim() }, ["prompt", "response"], dataKey);
+      await apiRequest("POST", "/api/yes-and/responses", encrypted);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/yes-and/responses"] });

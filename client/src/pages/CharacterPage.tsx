@@ -4,6 +4,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SavedCharacter } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/context/AuthContext";
+import { encryptFields, decryptArray } from "@/lib/crypto";
 
 interface RandomChar { name: string; occupation: string; quirk: string; want: string; }
 
@@ -26,8 +28,12 @@ const S = {
 type FormState = { name: string; occupation: string; quirk: string; want: string; notes: string };
 const EMPTY_FORM: FormState = { name: "", occupation: "", quirk: "", want: "", notes: "" };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CHAR_ENCRYPTED_FIELDS: any[] = ["name", "occupation", "quirk", "want", "notes"];
+
 export default function CharacterPage() {
   const { toast } = useToast();
+  const { dataKey } = useAuth();
   const [tab, setTab] = useState<Tab>("generate");
   const [character, setCharacter] = useState<RandomChar | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,17 +41,26 @@ export default function CharacterPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
-  const { data: library = [], isLoading: libLoading } = useQuery<SavedCharacter[]>({
+  const { data: library = [], isLoading: libLoading } = useQuery<SavedCharacter[], Error, SavedCharacter[]>({
     queryKey: ["/api/saved-characters"],
+    select: ((raw: SavedCharacter[]) => dataKey ? decryptArray(raw, CHAR_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: SavedCharacter[]) => SavedCharacter[],
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: FormState) => { await apiRequest("POST", "/api/saved-characters", data); },
+    mutationFn: async (data: FormState) => {
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, CHAR_ENCRYPTED_FIELDS, dataKey);
+      await apiRequest("POST", "/api/saved-characters", encrypted);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/saved-characters"] }); setShowAddForm(false); setForm(EMPTY_FORM); toast({ title: "Character saved" }); },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => { await apiRequest("PATCH", `/api/saved-characters/${id}`, data); },
+    mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => {
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, CHAR_ENCRYPTED_FIELDS, dataKey);
+      await apiRequest("PATCH", `/api/saved-characters/${id}`, encrypted);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/saved-characters"] }); setEditId(null); toast({ title: "Character updated" }); },
   });
 

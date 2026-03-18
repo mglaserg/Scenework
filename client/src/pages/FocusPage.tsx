@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
+import { encryptFields, decryptArray, decryptFields } from "@/lib/crypto";
 import { Plus, Edit2, Trash2, Shuffle, BookOpen, X, Check, MousePointerClick } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,8 +124,14 @@ function FocusCard({
 type FormState = { title: string; category: string; description: string };
 const BLANK: FormState = { title: "", category: "technique", description: "" };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const FOCUS_ENCRYPTED_FIELDS: any[] = ["title", "description"];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SESSION_ENCRYPTED_FIELDS: any[] = ["notes"];
+
 export default function FocusPage() {
   const { toast } = useToast();
+  const { dataKey } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<FocusItem | null>(null);
   const [form, setForm] = useState<FormState>(BLANK);
@@ -133,16 +141,30 @@ export default function FocusPage() {
   const [drawMode, setDrawMode] = useState<"random" | "pick">("random");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const { data: items = [], isLoading } = useQuery<FocusItem[]>({ queryKey: ["/api/focus-items"] });
-  const { data: sessions = [] } = useQuery<PracticeSession[]>({ queryKey: ["/api/practice-sessions"] });
+  const { data: items = [], isLoading } = useQuery<FocusItem[], Error, FocusItem[]>({
+    queryKey: ["/api/focus-items"],
+    select: ((raw: FocusItem[]) => dataKey ? decryptArray(raw, FOCUS_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: FocusItem[]) => FocusItem[],
+  });
+  const { data: sessions = [] } = useQuery<PracticeSession[], Error, PracticeSession[]>({
+    queryKey: ["/api/practice-sessions"],
+    select: ((raw: PracticeSession[]) => dataKey ? decryptArray(raw, SESSION_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: PracticeSession[]) => PracticeSession[],
+  });
 
   const createMutation = useMutation({
-    mutationFn: (data: FormState) => apiRequest("POST", "/api/focus-items", data),
+    mutationFn: async (data: FormState) => {
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, FOCUS_ENCRYPTED_FIELDS, dataKey);
+      return apiRequest("POST", "/api/focus-items", encrypted);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/focus-items"] }); setShowForm(false); setForm(BLANK); toast({ title: "Focus item added" }); },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<FormState> }) => apiRequest("PATCH", `/api/focus-items/${id}`, data),
+    mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => {
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, FOCUS_ENCRYPTED_FIELDS, dataKey);
+      return apiRequest("PATCH", `/api/focus-items/${id}`, encrypted);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/focus-items"] }); setEditingItem(null); setForm(BLANK); toast({ title: "Updated" }); },
   });
 
@@ -152,7 +174,11 @@ export default function FocusPage() {
   });
 
   const sessionMutation = useMutation({
-    mutationFn: (data: { focusItemIds: string; notes?: string }) => apiRequest("POST", "/api/practice-sessions", data),
+    mutationFn: async (data: { focusItemIds: string; notes?: string }) => {
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, SESSION_ENCRYPTED_FIELDS, dataKey);
+      return apiRequest("POST", "/api/practice-sessions", encrypted);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/practice-sessions"] }); setSessionNotes(""); toast({ title: "Session logged ✓" }); },
   });
 

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
+import { encryptFields, decryptArray } from "@/lib/crypto";
 import { Plus, Trash2, ChevronDown, ChevronRight, X, Check, Edit2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -169,22 +171,37 @@ function Section({ label, value, color }: { label: string; value: string; color:
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const JOURNAL_ENCRYPTED_FIELDS: any[] = ["title", "whatWorked", "whatToImprove", "breakthroughMoment", "freeWrite"];
+
 export default function JournalPage() {
   const { toast } = useToast();
+  const { dataKey } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
   const [form, setForm] = useState<FormState>(BLANK);
   const [filterType, setFilterType] = useState("all");
 
-  const { data: entries = [], isLoading } = useQuery<JournalEntry[]>({ queryKey: ["/api/journal-entries"] });
+  const { data: entries = [], isLoading } = useQuery<JournalEntry[], Error, JournalEntry[]>({
+    queryKey: ["/api/journal-entries"],
+    select: ((raw: JournalEntry[]) => dataKey ? decryptArray(raw, JOURNAL_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: JournalEntry[]) => JournalEntry[],
+  });
 
   const createMutation = useMutation({
-    mutationFn: (data: FormState) => apiRequest("POST", "/api/journal-entries", data),
+    mutationFn: async (data: FormState) => {
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, JOURNAL_ENCRYPTED_FIELDS, dataKey);
+      return apiRequest("POST", "/api/journal-entries", encrypted);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] }); setShowForm(false); setForm(BLANK); toast({ title: "Entry saved" }); },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<FormState> }) => apiRequest("PATCH", `/api/journal-entries/${id}`, data),
+    mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => {
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, JOURNAL_ENCRYPTED_FIELDS, dataKey);
+      return apiRequest("PATCH", `/api/journal-entries/${id}`, encrypted);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] }); setEditingEntry(null); setShowForm(false); setForm(BLANK); toast({ title: "Entry updated" }); },
   });
 

@@ -4,6 +4,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { WarmupExercise } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/context/AuthContext";
+import { encryptFields, decryptArray } from "@/lib/crypto";
 
 // ── Default seed exercises (seeded into DB on first generate if empty) ────────
 const DEFAULT_EXERCISES = [
@@ -31,8 +33,12 @@ type FormState = { name: string; duration: string; description: string };
 
 const EMPTY_FORM: FormState = { name: "", duration: "3 min", description: "" };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const WARMUP_ENCRYPTED_FIELDS: any[] = ["name", "description"];
+
 export default function WarmUpPage() {
   const { toast } = useToast();
+  const { dataKey } = useAuth();
   const [drawnSet, setDrawnSet] = useState<WarmupExercise[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -40,13 +46,16 @@ export default function WarmUpPage() {
   const [editState, setEditState] = useState<EditState>(null);
   const [tab, setTab] = useState<"draw" | "library">("draw");
 
-  const { data: exercises = [], isLoading } = useQuery<WarmupExercise[]>({
+  const { data: exercises = [], isLoading } = useQuery<WarmupExercise[], Error, WarmupExercise[]>({
     queryKey: ["/api/warmup-exercises"],
+    select: ((raw: WarmupExercise[]) => dataKey ? decryptArray(raw, WARMUP_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: WarmupExercise[]) => WarmupExercise[],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: FormState) => {
-      await apiRequest("POST", "/api/warmup-exercises", data);
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, WARMUP_ENCRYPTED_FIELDS, dataKey);
+      await apiRequest("POST", "/api/warmup-exercises", encrypted);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/warmup-exercises"] });
@@ -58,7 +67,9 @@ export default function WarmUpPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<FormState> }) => {
-      await apiRequest("PATCH", `/api/warmup-exercises/${id}`, data);
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, WARMUP_ENCRYPTED_FIELDS, dataKey);
+      await apiRequest("PATCH", `/api/warmup-exercises/${id}`, encrypted);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/warmup-exercises"] });
@@ -79,9 +90,11 @@ export default function WarmUpPage() {
     let pool = exercises;
     // Auto-seed defaults if library is empty
     if (pool.length === 0) {
+      if (!dataKey) throw new Error("No encryption key");
       const created: WarmupExercise[] = [];
       for (const ex of DEFAULT_EXERCISES) {
-        const res = await apiRequest("POST", "/api/warmup-exercises", ex);
+        const encrypted = await encryptFields(ex, ["name", "description"], dataKey);
+        const res = await apiRequest("POST", "/api/warmup-exercises", encrypted);
         created.push(await res.json());
       }
       queryClient.invalidateQueries({ queryKey: ["/api/warmup-exercises"] });

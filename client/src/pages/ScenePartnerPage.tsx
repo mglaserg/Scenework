@@ -4,6 +4,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { ScenePremise } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/context/AuthContext";
+import { encryptFields, decryptArray } from "@/lib/crypto";
 
 interface RandomPremise {
   characterA: { name: string; want: string };
@@ -31,8 +33,12 @@ function CharCard({ label, name, want }: { label: string; name: string; want: st
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SCENE_ENCRYPTED_FIELDS: any[] = ["characterA", "characterAWant", "characterB", "characterBWant", "location", "opening", "notes"];
+
 export default function ScenePartnerPage() {
   const { toast } = useToast();
+  const { dataKey } = useAuth();
   const [tab, setTab] = useState<Tab>("generate");
   const [premise, setPremise] = useState<RandomPremise | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,13 +46,16 @@ export default function ScenePartnerPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ characterA: "", characterAWant: "", characterB: "", characterBWant: "", location: "", opening: "", notes: "" });
 
-  const { data: saved = [], isLoading: savedLoading } = useQuery<ScenePremise[]>({
+  const { data: saved = [], isLoading: savedLoading } = useQuery<ScenePremise[], Error, ScenePremise[]>({
     queryKey: ["/api/scene-premises"],
+    select: ((raw: ScenePremise[]) => dataKey ? decryptArray(raw, SCENE_ENCRYPTED_FIELDS, dataKey) : raw) as (raw: ScenePremise[]) => ScenePremise[],
   });
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof form) => {
-      await apiRequest("POST", "/api/scene-premises", data);
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, SCENE_ENCRYPTED_FIELDS, dataKey);
+      await apiRequest("POST", "/api/scene-premises", encrypted);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scene-premises"] });
@@ -56,7 +65,9 @@ export default function ScenePartnerPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<typeof form> }) => {
-      await apiRequest("PATCH", `/api/scene-premises/${id}`, data);
+      if (!dataKey) throw new Error("No encryption key");
+      const encrypted = await encryptFields(data, SCENE_ENCRYPTED_FIELDS, dataKey);
+      await apiRequest("PATCH", `/api/scene-premises/${id}`, encrypted);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scene-premises"] });
