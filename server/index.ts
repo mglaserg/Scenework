@@ -8,6 +8,10 @@ import { setupAuth } from "./auth";
 const app = express();
 const httpServer = createServer(app);
 
+// Trust the first proxy so req.secure works correctly behind DO's load balancer / Nginx.
+// Required for session cookies with secure:true + sameSite:"none" to be sent.
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
